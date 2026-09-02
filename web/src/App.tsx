@@ -1,26 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchProducts, mutate, raceReserve, type MutationResult, type Product } from './api.js';
+import {
+  fetchProducts,
+  mutate,
+  raceReserve,
+  type MutationResult,
+  type Operation,
+  type Product,
+} from './api.js';
 
 type Feedback = { tone: 'ok' | 'ko' | 'info'; text: string };
+type Busy = { reserve: boolean; release: boolean; race: boolean };
+
+const IDLE: Busy = { reserve: false, release: false, race: false };
 
 export function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<number, string>>({});
   const [feedback, setFeedback] = useState<Record<number, Feedback>>({});
-  const [pending, setPending] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState<Record<number, Busy>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
 
   /**
-   * Une cle d'idempotence par intention utilisateur, conservee tant que la
-   * requete n'a pas recu de reponse definitive. Un double-clic ou un retry
-   * reseau rejoue la meme cle : le serveur ne decremente qu'une seule fois.
+   * Une cle d'idempotence par intention utilisateur, conservee tant qu'aucune
+   * reponse definitive n'est arrivee. Un double-clic ou un retry apres timeout
+   * rejoue donc la meme cle et le serveur ne decremente qu'une fois.
    */
-  const keys = useRef<Record<string, string>>({});
-  const intentKey = (op: string, id: number, qty: number) => {
+  const keys = useRef<Map<string, string>>(new Map());
+  const intentKey = (op: Operation, id: number, qty: number) => {
     const slot = `${op}:${id}:${qty}`;
-    keys.current[slot] ??= crypto.randomUUID();
-    return { slot, key: keys.current[slot]! };
+    const existing = keys.current.get(slot);
+    if (existing) return { slot, key: existing };
+    const fresh = crypto.randomUUID();
+    keys.current.set(slot, fresh);
+    return { slot, key: fresh };
   };
+
+  const setBusyFlag = (id: number, field: keyof Busy, value: boolean) =>
+    setBusy((b) => ({ ...b, [id]: { ...(b[id] ?? IDLE), [field]: value } }));
 
   const reload = useCallback(async () => {
     try {
@@ -35,17 +51,20 @@ export function App() {
     void reload();
   }, [reload]);
 
-  const describe = (r: MutationResult): Feedback =>
-    r.ok
-      ? {
-          tone: 'ok',
-          text: r.replayed
-            ? `Requete rejouee (idempotence) : aucun mouvement de stock. Disponible : ${r.product.quantity}.`
-            : `${r.operation === 'reserve' ? 'Reserve' : 'Libere'} : ${r.quantity}. Disponible : ${r.product.quantity}.`,
-        }
-      : { tone: 'ko', text: `${r.error.message} [${r.error.code}]` };
+  const describe = (r: MutationResult): Feedback => {
+    if (!r.ok) {
+      const suffix = r.status === 429 ? ' (quota atteint)' : '';
+      return { tone: 'ko', text: `${r.error.message} [${r.error.code}]${suffix}` };
+    }
+    return {
+      tone: 'ok',
+      text: r.replayed
+        ? `Requete rejouee (idempotence) : aucun mouvement de stock. Disponible : ${r.product.quantity}.`
+        : `${r.operation === 'reserve' ? 'Reserve' : 'Libere'} : ${r.quantity}. Disponible : ${r.product.quantity}.`,
+    };
+  };
 
-  const run = async (op: 'reserve' | 'release', product: Product) => {
+  const run = async (operation: Operation, product: Product) => {
     const qty = Number(quantities[product.id] ?? '1');
 
     if (!Number.isInteger(qty) || qty <= 0) {
@@ -56,44 +75,50 @@ export function App() {
       return;
     }
 
-    const { slot, key } = intentKey(op, product.id, qty);
-    setPending((p) => ({ ...p, [slot]: true }));
+    const { slot, key } = intentKey(operation, product.id, qty);
+    setBusyFlag(product.id, operation, true);
     try {
-      const result = await mutate(op, product.id, qty, key);
+      const result = await mutate(operation, product.id, qty, key);
       setFeedback((f) => ({ ...f, [product.id]: describe(result) }));
-      // Reponse definitive recue : intention consommee, la prochaine aura sa cle.
-      delete keys.current[slot];
+      // Reponse definitive : l'intention est consommee, la suivante aura sa cle.
+      keys.current.delete(slot);
       await reload();
     } catch {
-      // Echec reseau : on garde la cle pour que le retry soit idempotent.
+      // Echec reseau : on GARDE la cle, pour que le retry soit un rejeu.
       setFeedback((f) => ({
         ...f,
-        [product.id]: { tone: 'ko', text: 'Erreur reseau. Reessaie : la requete est idempotente.' },
+        [product.id]: {
+          tone: 'ko',
+          text: 'Erreur reseau. Reessaie : la requete est idempotente, elle ne comptera pas deux fois.',
+        },
       }));
     } finally {
-      setPending((p) => ({ ...p, [slot]: false }));
+      setBusyFlag(product.id, operation, false);
     }
   };
 
   const runRace = async (product: Product) => {
-    const slot = `race:${product.id}`;
-    setPending((p) => ({ ...p, [slot]: true }));
+    setBusyFlag(product.id, 'race', true);
     try {
       const [a, b] = await raceReserve(product.id, 1);
       const granted = [a, b].filter((r) => r.ok).length;
-      const detail = [a, b].map((r, i) => `${i === 0 ? 'A' : 'B'}=${r.ok ? 200 : r.status}`).join(' ');
+      const detail = [a, b]
+        .map((r, i) => `${i === 0 ? 'A' : 'B'}=${r.ok ? 200 : r.status}`)
+        .join('  ');
       setFeedback((f) => ({
         ...f,
         [product.id]: {
           tone: granted === 1 ? 'info' : 'ko',
           text:
-            `2 clients simultanes (1 accordee attendue) : accordees = ${granted}. ${detail}` +
-            (granted === 1 ? '' : ' *** INVARIANT VIOLE ***'),
+            product.quantity === 1
+              ? `2 clients simultanes sur 1 article : ${granted} accordee, ${2 - granted} refusee.  ${detail}` +
+                (granted === 1 ? '' : '   *** INVARIANT VIOLE ***')
+              : `2 clients simultanes : ${granted} accordee(s).  ${detail}`,
         },
       }));
       await reload();
     } finally {
-      setPending((p) => ({ ...p, [slot]: false }));
+      setBusyFlag(product.id, 'race', false);
     }
   };
 
@@ -102,7 +127,8 @@ export function App() {
       <header>
         <h1>Reservation de stock</h1>
         <p className="sub">
-          Stock disponible garanti par un decrement atomique conditionnel en base.
+          Le stock disponible est garanti par un decrement atomique conditionnel en base :
+          <code> UPDATE ... WHERE available_quantity &gt;= :qty</code>.
         </p>
       </header>
 
@@ -112,8 +138,10 @@ export function App() {
         {products.map((product) => {
           const qty = quantities[product.id] ?? '1';
           const fb = feedback[product.id];
-          const busy = Object.entries(pending).some(([k, v]) => v && k.includes(`:${product.id}:`));
+          const state = busy[product.id] ?? IDLE;
+          const pending = state.reserve || state.release;
           const soldOut = product.quantity === 0;
+          const full = product.quantity === product.total;
 
           return (
             <li key={product.id} className="card">
@@ -134,28 +162,33 @@ export function App() {
                   value={qty}
                   onChange={(e) => setQuantities((q) => ({ ...q, [product.id]: e.target.value }))}
                 />
+                <span className="version">v{product.version}</span>
               </div>
 
               <div className="actions">
-                <button type="button" disabled={busy || soldOut} onClick={() => void run('reserve', product)}>
-                  Reserver
+                <button
+                  type="button"
+                  disabled={pending || soldOut}
+                  onClick={() => void run('reserve', product)}
+                >
+                  {state.reserve ? 'Reservation...' : 'Reserver'}
                 </button>
                 <button
                   type="button"
                   className="secondary"
-                  disabled={busy || product.quantity === product.total}
+                  disabled={pending || full}
                   onClick={() => void run('release', product)}
                 >
-                  Liberer
+                  {state.release ? 'Liberation...' : 'Liberer'}
                 </button>
                 <button
                   type="button"
                   className="ghost"
-                  disabled={pending[`race:${product.id}`]}
+                  disabled={state.race || soldOut}
                   onClick={() => void runRace(product)}
-                  title="Envoie deux reservations de 1 en parallele"
+                  title="Envoie deux reservations de 1 en parallele, avec deux cles distinctes"
                 >
-                  Tester 2 clients simultanes
+                  {state.race ? 'Course en cours...' : 'Tester 2 clients simultanes'}
                 </button>
               </div>
 
@@ -164,6 +197,13 @@ export function App() {
           );
         })}
       </ul>
+
+      <footer>
+        <p>
+          <strong>Dock USB-C</strong> est a 1 exemplaire : c'est le cas du jury. Clique
+          «&nbsp;Tester 2 clients simultanes&nbsp;» dessus — une seule reservation doit passer.
+        </p>
+      </footer>
     </main>
   );
 }

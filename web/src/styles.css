@@ -82,3 +82,17 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .feedback.ok { color: var(--ok); }
 .feedback.ko { color: var(--ko); }
 .feedback.info { color: var(--info); }
+
+.version { margin-left: auto; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: .82em;
+  padding: .1rem .3rem;
+  border-radius: 4px;
+  background: #0d0f14;
+  border: 1px solid var(--line);
+}
+
+footer { margin-top: 2rem; color: var(--muted); font-size: .85rem; line-height: 1.5; }
+footer strong { color: var(--text); }

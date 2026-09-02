@@ -1,21 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Db } from './db.js';
-import { insufficientStock, notFound, releaseExceedsCapacity, AppError } from './errors.js';
-
-export interface Product {
-  id: number;
-  name: string;
-  /** Stock disponible a la reservation (c'est le `quantity` de l'enonce). */
-  quantity: number;
-  /** Capacite totale : borne haute que `release` ne peut jamais depasser. */
-  total: number;
-  /** Compteur de mutations, utile pour un ETag / verrou optimiste cote client. */
-  version: number;
-}
-
-/** Resultat d'une operation metier. Les refus ne sont pas des exceptions :
- *  ils font partie du contrat et doivent pouvoir etre memorises (idempotence). */
-export type Outcome = { status: number; body: unknown };
+import type { Operation, Product, StockOutcome } from './domain.js';
 
 interface ProductRow {
   id: number;
@@ -33,6 +18,18 @@ const toProduct = (row: ProductRow): Product => ({
   version: row.version,
 });
 
+/** Rejeu d'une operation deja traitee, ou premiere execution. */
+export type IdempotentResult =
+  | { replayed: true; outcome: StockOutcome }
+  | { replayed: false; outcome: StockOutcome };
+
+/** Levee uniquement en cas d'usage incorrect de l'idempotence par le client. */
+export class IdempotencyConflict extends Error {
+  constructor() {
+    super('Cette cle d idempotence a deja servi pour une requete differente.');
+  }
+}
+
 export function createRepository(db: Db) {
   const stmt = {
     list: db.prepare<[], ProductRow>(
@@ -44,12 +41,11 @@ export function createRepository(db: Db) {
          FROM products WHERE id = ?`,
     ),
 
-    // === LE COEUR DU SUJET ===
-    // Decrement atomique conditionnel : la garde `available_quantity >= @qty`
-    // vit DANS l'UPDATE, pas dans un `if` JavaScript precede d'un SELECT.
-    // SQLite evalue la condition et ecrit sous le meme verrou d'ecriture, donc
-    // deux requetes concurrentes ne peuvent pas lire toutes les deux "1 dispo".
-    // La seconde voit changes === 0 et est refusee.
+    // ==================== LE COEUR DU SUJET ====================
+    // Decrement atomique conditionnel. La garde `available_quantity >= @qty`
+    // est evaluee DANS l'UPDATE, sous le verrou d'ecriture : il n'existe aucun
+    // instant ou deux requetes peuvent constater "1 disponible" et ecrire
+    // toutes les deux. La seconde touche 0 ligne et est refusee.
     reserve: db.prepare(
       `UPDATE products
           SET available_quantity = available_quantity - @qty,
@@ -68,103 +64,111 @@ export function createRepository(db: Db) {
     ),
 
     logEvent: db.prepare(
-      `INSERT INTO stock_events (product_id, kind, quantity, created_at)
-       VALUES (@productId, @kind, @qty, @createdAt)`,
+      `INSERT INTO stock_events (product_id, kind, quantity, actor, created_at)
+       VALUES (@productId, @kind, @qty, @actor, @createdAt)`,
     ),
 
-    findKey: db.prepare<[string], { request_hash: string; status_code: number; response_body: string }>(
-      `SELECT request_hash, status_code, response_body FROM idempotency_keys WHERE key = ?`,
+    findKey: db.prepare<[string, string], { request_hash: string; outcome: string }>(
+      `SELECT request_hash, outcome FROM idempotency_keys WHERE actor = ? AND key = ?`,
     ),
     saveKey: db.prepare(
-      `INSERT INTO idempotency_keys (key, endpoint, request_hash, status_code, response_body, created_at)
-       VALUES (@key, @endpoint, @hash, @status, @body, @createdAt)`,
+      `INSERT INTO idempotency_keys (actor, key, endpoint, request_hash, outcome, created_at)
+       VALUES (@actor, @key, @endpoint, @hash, @outcome, @createdAt)`,
     ),
   };
 
   const list = (): Product[] => stmt.list.all().map(toProduct);
 
-  const mutate = (kind: 'RESERVE' | 'RELEASE', id: number, qty: number): Outcome => {
+  /** Une seule ecriture conditionnelle, puis lecture du resultat. Sans exception. */
+  const apply = (operation: Operation, id: number, qty: number, actor: string): StockOutcome => {
     const changes =
-      kind === 'RESERVE'
+      operation === 'reserve'
         ? stmt.reserve.run({ id, qty }).changes
         : stmt.release.run({ id, qty }).changes;
 
     if (changes === 0) {
-      // Zero ligne touchee : soit le produit n'existe pas, soit la garde a joue.
+      // 0 ligne touchee : soit le produit n'existe pas, soit la garde a joue.
       const row = stmt.find.get(id);
-      const err = !row
-        ? notFound(id)
-        : kind === 'RESERVE'
-          ? insufficientStock(id, qty, row.available_quantity)
-          : releaseExceedsCapacity(id, qty, row.total_quantity - row.available_quantity);
-      return { status: err.status, body: { error: { code: err.code, message: err.message, details: err.details } } };
+      if (!row) {
+        return { granted: false, operation, quantity: qty, refusal: { reason: 'PRODUCT_NOT_FOUND' } };
+      }
+      const refusal =
+        operation === 'reserve'
+          ? ({
+              reason: 'INSUFFICIENT_STOCK',
+              wanted: qty,
+              available: row.available_quantity,
+            } as const)
+          : ({
+              reason: 'RELEASE_EXCEEDS_CAPACITY',
+              wanted: qty,
+              releasable: row.total_quantity - row.available_quantity,
+            } as const);
+      return { granted: false, operation, quantity: qty, refusal };
     }
 
-    stmt.logEvent.run({ productId: id, kind, qty, createdAt: new Date().toISOString() });
-    const product = toProduct(stmt.find.get(id)!);
-    return {
-      status: 200,
-      body: { ok: true, operation: kind.toLowerCase(), quantity: qty, product },
-    };
+    stmt.logEvent.run({
+      productId: id,
+      kind: operation,
+      qty,
+      actor,
+      createdAt: new Date().toISOString(),
+    });
+
+    return { granted: true, operation, quantity: qty, product: toProduct(stmt.find.get(id)!) };
   };
 
   /**
-   * Execute la mutation dans une transaction en ecriture immediate.
-   * `immediate` prend le verrou d'ecriture des le BEGIN : pas d'echec tardif
-   * d'upgrade lecture -> ecriture quand plusieurs processus partagent le fichier.
+   * `BEGIN IMMEDIATE` : le verrou d'ecriture est pris des l'ouverture, donc pas
+   * d'echec tardif d'upgrade lecture -> ecriture quand plusieurs processus
+   * partagent le fichier.
    */
-  const mutationTx = db.transaction(mutate);
-  const runMutation = (kind: 'RESERVE' | 'RELEASE', id: number, qty: number): Outcome =>
-    mutationTx.immediate(kind, id, qty);
+  const applyTx = db.transaction(apply);
+  const runOperation = (operation: Operation, id: number, qty: number, actor: string) =>
+    applyTx.immediate(operation, id, qty, actor);
 
   /**
-   * Meme mutation, mais rejouable : la cle d'idempotence et la reponse sont
-   * ecrites dans la MEME transaction que le stock. Un retour de la meme cle
-   * renvoie la reponse memorisee sans retoucher le stock.
-   * Les refus (409) sont memorises aussi : un retry doit donner le meme verdict.
+   * Meme operation, rejouable. La cle d'idempotence et l'issue du domaine sont
+   * ecrites dans LA MEME transaction que le stock : impossible d'avoir un stock
+   * mute sans sa cle, ou une cle sans son effet.
+   *
+   * On memorise l'issue DU DOMAINE, pas une reponse HTTP : la representation
+   * transport peut evoluer sans invalider les cles deja enregistrees.
    */
   const idempotentTx = db.transaction(
-    (key: string, endpoint: string, kind: 'RESERVE' | 'RELEASE', id: number, qty: number) => {
-      const hash = createHash('sha256').update(JSON.stringify({ endpoint, id, qty })).digest('hex');
-      const existing = stmt.findKey.get(key);
+    (actor: string, key: string, operation: Operation, id: number, qty: number): IdempotentResult => {
+      const hash = createHash('sha256')
+        .update(JSON.stringify({ operation, id, qty }))
+        .digest('hex');
 
+      const existing = stmt.findKey.get(actor, key);
       if (existing) {
-        if (existing.request_hash !== hash) {
-          throw new AppError(
-            422,
-            'IDEMPOTENCY_KEY_REUSED',
-            'Cette cle d\'idempotence a deja servi pour une requete differente.',
-          );
-        }
-        return {
-          replayed: true,
-          status: existing.status_code,
-          body: JSON.parse(existing.response_body) as unknown,
-        };
+        if (existing.request_hash !== hash) throw new IdempotencyConflict();
+        return { replayed: true, outcome: JSON.parse(existing.outcome) as StockOutcome };
       }
 
-      const outcome = mutate(kind, id, qty);
+      const outcome = apply(operation, id, qty, actor);
       stmt.saveKey.run({
+        actor,
         key,
-        endpoint,
+        endpoint: operation,
         hash,
-        status: outcome.status,
-        body: JSON.stringify(outcome.body),
+        outcome: JSON.stringify(outcome),
         createdAt: new Date().toISOString(),
       });
-      return { replayed: false, ...outcome };
+      return { replayed: false, outcome };
     },
   );
 
-  const runIdempotentMutation = (
+  const runIdempotentOperation = (
+    actor: string,
     key: string,
-    endpoint: string,
-    kind: 'RESERVE' | 'RELEASE',
+    operation: Operation,
     id: number,
     qty: number,
-  ) => idempotentTx.immediate(key, endpoint, kind, id, qty);
+  ) => idempotentTx.immediate(actor, key, operation, id, qty);
 
-  return { list, find: (id: number) => stmt.find.get(id), runMutation, runIdempotentMutation };
+  return { list, runOperation, runIdempotentOperation };
 }
 
 export type Repository = ReturnType<typeof createRepository>;

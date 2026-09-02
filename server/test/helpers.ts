@@ -1,24 +1,24 @@
 import { mkdtempSync, rmSync } from 'node:fs';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AddressInfo } from 'node:net';
-import type { Server } from 'node:http';
-import { createApp } from '../src/app.js';
+import { createApp, type AppOptions } from '../src/app.js';
 import { openDb, type Db } from '../src/db.js';
 
 export interface Harness {
   baseUrl: string;
   db: Db;
-  close(): void;
   dbFile: string;
+  close(): void;
 }
 
-/** Demarre une instance complete (db temporaire + HTTP sur un port libre). */
-export async function startHarness(): Promise<Harness> {
+/** Instance complete et isolee : base temporaire + HTTP sur un port libre. */
+export async function startHarness(options: AppOptions = {}): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), 'stock-test-'));
   const dbFile = join(dir, 'stock.db');
   const db = openDb(dbFile);
-  const server: Server = createApp(db).listen(0);
+  const server: Server = createApp(db, options).listen(0);
   await new Promise<void>((resolve) => server.once('listening', resolve));
   const { port } = server.address() as AddressInfo;
 
@@ -29,9 +29,19 @@ export async function startHarness(): Promise<Harness> {
     close() {
       server.close();
       db.close();
-      rmSync(dir, { recursive: true, force: true });
+      try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      } catch {
+        /* Windows peut garder le fichier verrouille un instant : sans importance. */
+      }
     },
   };
+}
+
+export interface HttpResult {
+  status: number;
+  headers: Headers;
+  body: any;
 }
 
 export async function post(
@@ -39,19 +49,19 @@ export async function post(
   path: string,
   body: unknown,
   headers: Record<string, string> = {},
-) {
+): Promise<HttpResult> {
   const res = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
-  return { status: res.status, headers: res.headers, body: (await res.json()) as any };
+  return { status: res.status, headers: res.headers, body: await res.json() };
 }
 
-export async function get(baseUrl: string, path: string) {
+export async function get(baseUrl: string, path: string): Promise<HttpResult> {
   const res = await fetch(`${baseUrl}${path}`);
-  return { status: res.status, body: (await res.json()) as any };
+  return { status: res.status, headers: res.headers, body: await res.json() };
 }
 
-export const stockOf = async (baseUrl: string, id: number) =>
+export const stockOf = async (baseUrl: string, id: number): Promise<number> =>
   (await get(baseUrl, '/products')).body.products.find((p: any) => p.id === id).quantity;

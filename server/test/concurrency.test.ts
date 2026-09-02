@@ -22,6 +22,12 @@ describe('Probleme senior : 1 article, 2 clients simultanes', () => {
     const refused = [a, b].find((r) => r.status === 409)!;
     expect(refused.body.error).toMatchObject({ code: 'INSUFFICIENT_STOCK' });
     expect(refused.body.error.details).toEqual({ wanted: 1, available: 0 });
+
+    // Un seul mouvement au journal d'audit : pas de double comptabilisation.
+    const events = h.db
+      .prepare('SELECT COUNT(*) AS n FROM stock_events WHERE product_id = 4')
+      .get() as { n: number };
+    expect(events.n).toBe(1);
   });
 });
 
