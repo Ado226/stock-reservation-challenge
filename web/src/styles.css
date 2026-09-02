@@ -1,0 +1,84 @@
+:root {
+  --bg: #0f1115;
+  --card: #171a21;
+  --line: #262b36;
+  --text: #e8eaf0;
+  --muted: #9aa3b2;
+  --ok: #3ddc97;
+  --ko: #ff6b6b;
+  --info: #6ba7ff;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main { max-width: 900px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+
+h1 { margin: 0 0 .35rem; font-size: 1.6rem; letter-spacing: -.01em; }
+.sub { margin: 0 0 2rem; color: var(--muted); font-size: .9rem; }
+
+.banner { padding: .75rem 1rem; border-radius: 8px; border: 1px solid var(--line); }
+.banner.ko { border-color: var(--ko); color: var(--ko); }
+
+.grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.1rem 1.2rem;
+}
+
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.card-head h2 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+
+.badge {
+  font-variant-numeric: tabular-nums;
+  font-size: .8rem;
+  padding: .2rem .6rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ok);
+  white-space: nowrap;
+}
+.badge.zero { color: var(--ko); }
+
+.row { display: flex; align-items: center; gap: .6rem; margin: 1rem 0 .8rem; }
+.row label { font-size: .85rem; color: var(--muted); }
+
+input {
+  width: 6rem;
+  padding: .45rem .6rem;
+  background: #0d0f14;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+button {
+  padding: .45rem .9rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: var(--info);
+  color: #06121f;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.secondary { background: transparent; border-color: var(--line); color: var(--text); }
+button.ghost { background: transparent; border-color: var(--line); color: var(--muted); font-weight: 500; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.feedback { margin: .9rem 0 0; font-size: .87rem; line-height: 1.45; }
+.feedback.ok { color: var(--ok); }
+.feedback.ko { color: var(--ko); }
+.feedback.info { color: var(--info); }
