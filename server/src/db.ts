@@ -48,13 +48,20 @@ const MIGRATIONS: ReadonlyArray<(db: Db) => void> = [
       CREATE INDEX idx_idempotency_created_at ON idempotency_keys (created_at);
     `);
   },
+
+  // 002 — libelles accentues (le seed initial etait en ASCII)
+  (db) => {
+    const rename = db.prepare('UPDATE products SET name = ? WHERE id = ?');
+    rename.run('Écran Dell 27\"', 3);
+    rename.run('Dock USB-C (dernière pièce)', 4);
+  },
 ];
 
 const SEED: ReadonlyArray<readonly [number, string, number]> = [
   [1, 'Laptop Lenovo', 5],
   [2, 'Souris Logitech MX', 12],
-  [3, 'Ecran Dell 27"', 3],
-  [4, 'Dock USB-C (derniere piece)', 1],
+  [3, 'Écran Dell 27"', 3],
+  [4, 'Dock USB-C (dernière pièce)', 1],
 ];
 
 function migrate(db: Db): void {

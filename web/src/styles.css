@@ -1,98 +1,733 @@
+/* ============================================================
+   Fiche de stock — jetons de conception
+
+   La fiche de casier du magasinier : papier réglé, solde courant,
+   et la convention du registre — rouge pour les sorties, encre pour
+   les entrées. Ici : rouge = réservation, encre = libération.
+   ============================================================ */
+
 :root {
-  --bg: #0f1115;
-  --card: #171a21;
-  --line: #262b36;
-  --text: #e8eaf0;
-  --muted: #9aa3b2;
-  --ok: #3ddc97;
-  --ko: #ff6b6b;
-  --info: #6ba7ff;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --paper: #edeee9;
+  --card: #fbfbf8;
+  --ink: #16191a;
+  --ink-soft: #5c6360;
+  --ink-faint: #8d9490;
+  --rule: #c9d0cb;
+  --rule-soft: #dee2dd;
+  /* Sortie de stock : rouge de registre. */
+  --out: #a32b14;
+  --out-wash: #f7e6e2;
+  /* Entrée / dotation disponible. */
+  --in: #1f6f4a;
+  --in-wash: #e3ece6;
+  /* L'instrument : la teinte réservée aux mesures et aux verdicts. */
+  --probe: #0f4c4a;
+
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", ui-sans-serif, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  --shadow: 0 1px 0 rgba(22, 25, 26, 0.04), 0 8px 24px -18px rgba(22, 25, 26, 0.4);
 }
 
-* { box-sizing: border-box; }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #101314;
+    --card: #191d1e;
+    --ink: #e7eae6;
+    --ink-soft: #9aa29d;
+    --ink-faint: #6b736f;
+    --rule: #2e3536;
+    --rule-soft: #232a2b;
+    --out: #ef7256;
+    --out-wash: #2b1a16;
+    --in: #4fbe8a;
+    --in-wash: #142420;
+    --probe: #5bd6cf;
+    --shadow: none;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
-main { max-width: 900px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
-
-h1 { margin: 0 0 .35rem; font-size: 1.6rem; letter-spacing: -.01em; }
-.sub { margin: 0 0 2rem; color: var(--muted); font-size: .9rem; }
-
-.banner { padding: .75rem 1rem; border-radius: 8px; border: 1px solid var(--line); }
-.banner.ko { border-color: var(--ko); color: var(--ko); }
-
-.grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
-
-.card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 1.1rem 1.2rem;
+:focus-visible {
+  outline: 2px solid var(--probe);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
-.card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.card-head h2 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1rem, 3vw, 2rem) 4rem;
+}
 
-.badge {
-  font-variant-numeric: tabular-nums;
-  font-size: .8rem;
-  padding: .2rem .6rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  color: var(--ok);
+/* ---------- Masthead : la garantie elle-même en guise de thèse ---------- */
+
+.masthead {
+  border-top: 2px solid var(--ink);
+  padding-top: 1rem;
+  margin-bottom: 2.5rem;
+}
+
+.masthead-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 1.75rem;
+}
+
+.masthead h1 {
+  font-family: var(--cond);
+  font-weight: 700;
+  font-size: clamp(1.35rem, 3.4vw, 1.9rem);
+  letter-spacing: 0.015em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.masthead .count {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin-left: auto;
   white-space: nowrap;
 }
-.badge.zero { color: var(--ko); }
 
-.row { display: flex; align-items: center; gap: .6rem; margin: 1rem 0 .8rem; }
-.row label { font-size: .85rem; color: var(--muted); }
-
-input {
-  width: 6rem;
-  padding: .45rem .6rem;
-  background: #0d0f14;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font: inherit;
+.thesis {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
 }
 
-.actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.thesis p {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 1.02rem;
+}
 
-button {
-  padding: .45rem .9rem;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: var(--info);
-  color: #06121f;
-  font: inherit;
+.thesis strong {
   font-weight: 600;
+}
+
+.guarantee {
+  font-family: var(--mono);
+  font-size: clamp(0.72rem, 1.6vw, 0.84rem);
+  line-height: 1.7;
+  margin: 0;
+  padding: 0.9rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--probe);
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--ink-soft);
+}
+
+.guarantee b {
+  color: var(--probe);
+  font-weight: 600;
+}
+
+@media (min-width: 860px) {
+  .thesis {
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    align-items: start;
+    gap: 2rem;
+  }
+}
+
+/* ---------- Disposition : fiches à gauche, journal à droite ---------- */
+
+.layout {
+  display: grid;
+  gap: 2.5rem;
+  align-items: start;
+}
+
+@media (min-width: 1000px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    gap: 2rem;
+  }
+}
+
+.column-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  font-family: var(--cond);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--ink);
+  margin-bottom: 0;
+}
+
+/* ---------- Une fiche par référence ---------- */
+
+.sheets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sheet {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-top: none;
+  padding: 1.1rem 1.2rem 1.2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.sheet:first-child {
+  border-top: 1px solid var(--rule);
+}
+
+.sheet.is-empty {
+  background: var(--paper);
+}
+
+.sheet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.9rem;
+}
+
+.sheet-head h2 {
+  font-family: var(--cond);
+  font-size: 1.16rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.ref {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+
+.last-one {
+  font-family: var(--cond);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--out);
+  border: 1px solid currentColor;
+  padding: 0.1rem 0.4rem;
+}
+
+/* ---------- Signature : les unités, physiquement comptables ---------- */
+
+.count-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.1rem;
+}
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pip {
+  width: 13px;
+  height: 22px;
+  border: 1.5px solid var(--in);
+  background: var(--in);
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.pip.is-held {
+  background: var(--rule-soft);
+  border-color: var(--rule);
+  /* Barré en travers, comme une unité rayée de la fiche. */
+  background-image: linear-gradient(
+    to top right,
+    transparent 44%,
+    var(--ink-faint) 44%,
+    var(--ink-faint) 56%,
+    transparent 56%
+  );
+}
+
+.pip.is-last {
+  border-color: var(--out);
+  background: var(--out);
+}
+
+.tally-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 12rem;
+}
+
+.tally-bar .track {
+  flex: 1;
+  height: 8px;
+  background: var(--rule-soft);
+  border: 1px solid var(--rule);
+}
+
+.tally-bar .fill {
+  height: 100%;
+  background: var(--in);
+}
+
+.balance {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.balance b {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+
+.balance.is-empty b {
+  color: var(--out);
+}
+
+/* ---------- Commandes ---------- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.stepper {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--ink);
+}
+
+.stepper button {
+  width: 2.1rem;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 1rem;
+  line-height: 1;
   cursor: pointer;
 }
-button.secondary { background: transparent; border-color: var(--line); color: var(--text); }
-button.ghost { background: transparent; border-color: var(--line); color: var(--muted); font-weight: 500; }
-button:disabled { opacity: .45; cursor: not-allowed; }
 
-.feedback { margin: .9rem 0 0; font-size: .87rem; line-height: 1.45; }
-.feedback.ok { color: var(--ok); }
-.feedback.ko { color: var(--ko); }
-.feedback.info { color: var(--info); }
-
-.version { margin-left: auto; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-
-code {
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: .82em;
-  padding: .1rem .3rem;
-  border-radius: 4px;
-  background: #0d0f14;
-  border: 1px solid var(--line);
+.stepper button:hover:not(:disabled) {
+  background: var(--ink);
+  color: var(--card);
 }
 
-footer { margin-top: 2rem; color: var(--muted); font-size: .85rem; line-height: 1.5; }
-footer strong { color: var(--text); }
+.stepper button:disabled {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.stepper input {
+  width: 3rem;
+  border: none;
+  border-left: 1px solid var(--rule);
+  border-right: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  padding: 0.4rem 0;
+  -moz-appearance: textfield;
+}
+
+.stepper input::-webkit-outer-spin-button,
+.stepper input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.act {
+  font-family: var(--cond);
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 0.48rem 0.95rem;
+  border: 1px solid var(--out);
+  background: var(--out);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+  white-space: nowrap;
+}
+
+.act:hover:not(:disabled) {
+  opacity: 0.86;
+}
+
+.act.act-in {
+  background: transparent;
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.act.act-probe {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--probe);
+  color: var(--probe);
+  margin-left: auto;
+}
+
+.act:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+@media (prefers-color-scheme: dark) {
+  .act {
+    color: #16191a;
+  }
+}
+
+/* ---------- Retour d'action ---------- */
+
+.note {
+  margin: 0;
+  font-size: 0.88rem;
+  display: flex;
+  gap: 0.55rem;
+  align-items: baseline;
+}
+
+.note .sigil {
+  font-family: var(--mono);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.note.tone-in {
+  color: var(--in);
+}
+
+.note.tone-out {
+  color: var(--out);
+}
+
+.note.tone-probe {
+  color: var(--probe);
+}
+
+/* ---------- Lecture à deux voies : le test de concurrence ---------- */
+
+.probe-readout {
+  border: 1px solid var(--probe);
+  background: var(--card);
+  padding: 0.8rem 0.9rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.probe-readout .channels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.channel {
+  border: 1px solid var(--rule);
+  padding: 0.45rem 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.channel .who {
+  font-family: var(--cond);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+.channel.won {
+  border-color: var(--in);
+  background: var(--in-wash);
+  color: var(--in);
+}
+
+.channel.lost {
+  border-color: var(--out);
+  background: var(--out-wash);
+  color: var(--out);
+}
+
+.verdict {
+  font-family: var(--cond);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0;
+  color: var(--probe);
+}
+
+.verdict.broken {
+  color: var(--out);
+}
+
+/* ---------- Journal des mouvements ---------- */
+
+.aside {
+  display: grid;
+  gap: 2rem;
+  align-content: start;
+}
+
+@media (min-width: 1000px) {
+  .aside {
+    position: sticky;
+    top: 1.5rem;
+  }
+}
+
+.ledger-body {
+  border: 1px solid var(--rule);
+  border-top: none;
+  background: var(--card);
+  max-height: 30rem;
+  overflow-y: auto;
+}
+
+.ledger table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger th {
+  font-family: var(--cond);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--card);
+  position: sticky;
+  top: 0;
+}
+
+.ledger td {
+  padding: 0.42rem 0.6rem;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: baseline;
+}
+
+.ledger .num {
+  text-align: right;
+}
+
+.ledger tr.granted .mv {
+  color: var(--out);
+}
+
+.ledger tr.granted.mv-release .mv {
+  color: var(--in);
+}
+
+.ledger tr.refused {
+  color: var(--ink-faint);
+}
+
+.ledger tr.refused .mv {
+  text-decoration: line-through;
+}
+
+.ledger .label {
+  font-family: var(--sans);
+  color: var(--ink-soft);
+}
+
+.ledger-empty {
+  padding: 1.4rem 1rem;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.ledger-empty code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+/* ---------- États du chargement et de la panne ---------- */
+
+.alert {
+  border: 1px solid var(--out);
+  border-left-width: 3px;
+  background: var(--out-wash);
+  color: var(--out);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.alert h2 {
+  font-family: var(--cond);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0 0 0.3rem;
+}
+
+.alert p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.alert code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+}
+
+.skeleton {
+  height: 5.5rem;
+  border: 1px solid var(--rule);
+  border-top: none;
+  background: var(--card);
+}
+
+.skeleton:first-child {
+  border-top: 1px solid var(--rule);
+}
+
+/* ---------- Pied ---------- */
+
+.colophon {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-soft);
+  font-size: 0.84rem;
+  max-width: 62ch;
+}
+
+.colophon code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+/* ---------- Légende de lecture ---------- */
+
+.conventions dl {
+  margin: 0;
+  border: 1px solid var(--rule);
+  border-top: none;
+  background: var(--card);
+}
+
+.conventions dl > div {
+  display: grid;
+  grid-template-columns: 3.2rem minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.conventions dl > div:last-child {
+  border-bottom: none;
+}
+
+.conventions dt {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.conventions dt .pip {
+  width: 10px;
+  height: 17px;
+}
+
+.conventions dd {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.conventions .swatch-out {
+  color: var(--out);
+}
+
+.conventions .swatch-in {
+  color: var(--in);
+}
+
+.conventions .swatch-struck {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+}
+
+.conventions .swatch-probe {
+  color: var(--ink-faint);
+  font-weight: 500;
+}

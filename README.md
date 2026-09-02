@@ -494,9 +494,35 @@ server/
     race.ts         preuve multi-processus (2 serveurs, 1 base, 20 tours)
 web/
   src/
-    api.ts          client typé, identité de client, clés d'idempotence
-    App.tsx         liste, stock, saisie, réserver/libérer, succès/erreur, test de course
+    api.ts                    client typé, identité de client, clés d'idempotence
+    labels.ts                 pluriels français, codes de refus -> libellés lisibles
+    App.tsx                   fiches, commandes, verdict de course, état réseau
+    components/Tally.tsx      une pastille par unité (jauge au-delà de 24)
+    components/Stepper.tsx    quantité bornée : ni 0, ni négatif, ni décimal
+    components/Ledger.tsx     journal des mouvements avec solde courant
+    components/Conventions.tsx  légende du code couleur
 ```
+
+### Interface
+
+L'interface n'est pas une vitrine de produits, c'est une **fiche de stock** : le
+vocabulaire visuel du magasinier, avec la convention du registre — rouge pour les sorties,
+encre pour les entrées. Trois conséquences concrètes :
+
+- **Les unités sont comptables à l'œil.** Une pastille par unité, barrée quand elle est
+  tenue. « Il reste 1 article » n'est pas un chiffre à lire mais une pastille qu'on voit se
+  faire prendre. Au-delà de 24 unités, le comptage à l'œil ne veut plus rien dire : on passe
+  à une jauge.
+- **Le journal des mouvements avec solde courant** est ce qui rend le test de concurrence
+  lisible : la ligne refusée reste inscrite, barrée, sans mouvement de solde. Deux clients
+  simultanés produisent une ligne accordée et une ligne barrée — jamais deux accordées.
+- **La quantité passe par un sélecteur borné**, pas un champ libre : on ne peut plus
+  composer `0`, `-3` ou `1.5` depuis l'interface. La validation serveur reste la garantie ;
+  l'interface n'a simplement pas à proposer une requête qu'elle sait invalide.
+
+Typographie IBM Plex en trois rôles (Condensed pour les libellés, Mono pour tous les
+chiffres et le journal, Sans pour le texte), thème clair et sombre, responsive jusqu'au
+mobile, focus clavier visible, `prefers-reduced-motion` respecté.
 
 **Stack** : Express · SQLite (`better-sqlite3`) · Zod · Vitest · React · Vite,
 TypeScript `strict` (+ `noUncheckedIndexedAccess`) des deux côtés.
