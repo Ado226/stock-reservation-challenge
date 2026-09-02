@@ -6,6 +6,9 @@ import type { Refusal, StockOutcome } from './domain.js';
  * permet au domaine et au repository d'ignorer totalement HTTP.
  */
 
+/** Marque du pluriel : 0 et 1 restent au singulier. */
+const s = (n: number) => (n > 1 ? 's' : '');
+
 export interface HttpResponse {
   status: number;
   body: unknown;
@@ -24,12 +27,14 @@ const REFUSAL_HTTP: {
     // de "retente plus tard".
     status: 409,
     message: (r, id) =>
-      `Stock insuffisant pour le produit ${id} : ${r.wanted} demande(s), ${r.available} disponible(s).`,
+      `Stock insuffisant pour le produit ${id} : ${r.wanted} demandée${s(r.wanted)}, ` +
+      `${r.available} disponible${s(r.available)}.`,
   },
   RELEASE_EXCEEDS_CAPACITY: {
     status: 409,
     message: (r, id) =>
-      `Liberation impossible pour le produit ${id} : ${r.wanted} demande(s), ${r.releasable} liberable(s).`,
+      `Liberation impossible pour le produit ${id} : ${r.wanted} demandée${s(r.wanted)}, ` +
+      `${r.releasable} liberable${s(r.releasable)}.`,
   },
 };
 

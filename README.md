@@ -494,35 +494,47 @@ server/
     race.ts         preuve multi-processus (2 serveurs, 1 base, 20 tours)
 web/
   src/
-    api.ts                    client typé, identité de client, clés d'idempotence
-    labels.ts                 pluriels français, codes de refus -> libellés lisibles
-    App.tsx                   fiches, commandes, verdict de course, état réseau
-    components/Tally.tsx      une pastille par unité (jauge au-delà de 24)
-    components/Stepper.tsx    quantité bornée : ni 0, ni négatif, ni décimal
-    components/Ledger.tsx     journal des mouvements avec solde courant
-    components/Conventions.tsx  légende du code couleur
+    api.ts                      client typé, identité de client, clés d'idempotence
+    useStock.ts                 tout l'état et les actions, isolés du rendu
+    types.ts                    Movement, Note, Race
+    labels.ts                   pluriels français, codes de refus -> libellés lisibles
+    App.tsx                     barre supérieure, onglets, aiguillage des vues
+    components/StockList.tsx    liste des références, dépliable au clic
+    components/MovementTable.tsx  journal réutilisé par la fiche et par l'onglet
+    components/MovementsView.tsx  journal complet + comment le lire
+    components/ConcurrencyView.tsx  le cas du sujet, rejouable
+    components/Tally.tsx        une pastille par unité (jauge au-delà de 24)
+    components/Stepper.tsx      quantité bornée : ni 0, ni négatif, ni décimal
 ```
 
 ### Interface
 
-L'interface n'est pas une vitrine de produits, c'est une **fiche de stock** : le
-vocabulaire visuel du magasinier, avec la convention du registre — rouge pour les sorties,
-encre pour les entrées. Trois conséquences concrètes :
+Trois onglets, parce qu'il y a trois questions distinctes : *qu'y a-t-il en stock*,
+*que s'est-il passé*, *est-ce que ça tient sous concurrence*.
 
-- **Les unités sont comptables à l'œil.** Une pastille par unité, barrée quand elle est
-  tenue. « Il reste 1 article » n'est pas un chiffre à lire mais une pastille qu'on voit se
-  faire prendre. Au-delà de 24 unités, le comptage à l'œil ne veut plus rien dire : on passe
-  à une jauge.
-- **Le journal des mouvements avec solde courant** est ce qui rend le test de concurrence
-  lisible : la ligne refusée reste inscrite, barrée, sans mouvement de solde. Deux clients
-  simultanés produisent une ligne accordée et une ligne barrée — jamais deux accordées.
-- **La quantité passe par un sélecteur borné**, pas un champ libre : on ne peut plus
-  composer `0`, `-3` ou `1.5` depuis l'interface. La validation serveur reste la garantie ;
+| Onglet | Ce qu'il montre |
+|---|---|
+| **Stock** | La liste des références. Un clic sur une ligne la déplie et révèle **ses** mouvements — l'historique est sur l'article concerné, sans changer d'écran. |
+| **Mouvements** | Le journal complet avec solde courant, et sa légende. |
+| **Concurrence** | Le cas du sujet : deux clients sur le dernier article, avec le verdict annoncé. |
+
+Trois partis pris d'interface :
+
+- **Les unités sont comptables à l'œil.** Une pastille par unité, grisée quand elle est
+  tenue, rouge quand c'est la dernière. « Il reste 1 article » n'est pas un chiffre à lire
+  mais une pastille qu'on voit se faire prendre. Au-delà de 24 unités le comptage à l'œil ne
+  veut plus rien dire : on passe à une jauge.
+- **Une opération refusée reste inscrite au journal, barrée et sans solde.** C'est ce qui
+  rend le test de concurrence lisible : deux clients simultanés produisent une ligne
+  accordée et une ligne barrée, jamais deux accordées.
+- **La quantité passe par un sélecteur borné**, pas un champ libre : `0`, `-3` et `1.5` ne
+  sont pas composables depuis l'interface. La validation serveur reste la garantie —
   l'interface n'a simplement pas à proposer une requête qu'elle sait invalide.
 
-Typographie IBM Plex en trois rôles (Condensed pour les libellés, Mono pour tous les
-chiffres et le journal, Sans pour le texte), thème clair et sombre, responsive jusqu'au
-mobile, focus clavier visible, `prefers-reduced-motion` respecté.
+Fond clair teinté, encarts blancs arrondis, typographie IBM Plex en trois rôles
+(Condensed pour les libellés, Mono pour tous les chiffres et le journal, Sans pour le
+texte). Responsive jusqu'au mobile, focus clavier visible, `prefers-reduced-motion`
+respecté, en-têtes de tableau et `aria-expanded` sur les lignes dépliables.
 
 **Stack** : Express · SQLite (`better-sqlite3`) · Zod · Vitest · React · Vite,
 TypeScript `strict` (+ `noUncheckedIndexedAccess`) des deux côtés.
